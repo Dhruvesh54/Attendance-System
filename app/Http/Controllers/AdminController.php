@@ -2,14 +2,24 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\Attendance_Export;
+use App\Imports\AttendanceImport;
+use App\Imports\EmployeeImport;
+use App\Imports\UsersImport;
+use App\Jobs\SalesCsvProcess;
 use App\Models\attendance;
 use App\Models\employee;
 use App\Models\job;
 use App\Serviceas\EmployeeInsertService;
+use Bus;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use DataTables;
+// use Illuminate\Support\Facades\Process;
+use Symfony\Component\Process\Process;
 use Yajra\DataTables\Contracts\DataTable;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\Process\Exception\ProcessFailedException;
 
 class AdminController extends Controller
 {
@@ -17,6 +27,8 @@ class AdminController extends Controller
     public function __construct(EmployeeInsertService $employeeInsertService)
     {
         $this->employeeInsertService = $employeeInsertService;
+        ini_set("memory_limit", "1024M");
+        ini_set('max_execution_time', '300000');
     }
     public function index()
     {
@@ -33,6 +45,7 @@ class AdminController extends Controller
         // Construct the employee ID
         $emp_id = 'EMP' . $randomNumber;
 
+        // $job_title = job::all();
         $job_title = job::where('status', 'active')->get();
 
         return view('admin.add_employee', ['emp_id' => $emp_id], compact('job_title'));
@@ -53,39 +66,56 @@ class AdminController extends Controller
     {
         if ($request->ajax() || $request->isXmlHttpRequest() || $request->wantsJson()) {
             $data = employee::all();
+            $query = employee::query();
 
             return DataTables::of($data)
-                ->addColumn('edit', function ($id) {
-                    return '<span class="badge badge-sm bg-warning"><a href="' . route('admin.edit_employee', ['employee_id' => $id->employee_id]) . '" class="text-white">EDIT</a></span>';
-                })
-                ->addColumn('delete', function ($id) {
-                    return '<span class="badge badge-sm bg-danger"><a href="' . route('admin.delete_employee', ['employee_id' => $id->employee_id]) . '" class="text-white">DELETE</a></span>';
-                })
                 ->addColumn('action', function ($id) {
-                    $btn = '';
-                    if ($id->status == 'active') {
-                        $btn = '<span class="badge badge-sm bg-danger"><a href="' . route('admin.inactive_employee', ['employee_id' => $id->employee_id]) . '"class="text-white">Deactivate</a></span>';
+                    if ($id->status == "active") {
+                        return '
+                    <select class="select-action form-control width" data-id="' . $id->employee_id . '">
+                    <option class="m-0" value="0" disabled="true" selected="true">---Select Action--- </option>
+                    <option value="edit_employee">EDIT</option>
+                        <option value="delete_employee">Delete</option>
+                        <option value="deactivate_employee">Deactivate</option>
+                    </select>';
                     } else if ($id->status == 'inactive') {
-                        $btn = $btn . '<span class="badge badge-sm bg-success"><a href="' . route('admin.active_employee', ['employee_id' => $id->employee_id]) . '"class="text-white">Activate</a></span>';
-
+                        return '
+                        <select class="select-action form-control width" data-id="' . $id->employee_id . '">
+                        <option class="m-0" value="0" disabled="true" selected="true">---Select Action--- </option>
+                        <option value="edit_employee">EDIT</option>
+                            <option value="delete_employee">Delete</option>
+                            <option value="active_employee">Active</option>
+                        </select>';
                     } else {
-                        $btn = $btn . '<span class="badge badge-sm bg-secondary"><a href="' . route('admin.active_employee', ['employee_id' => $id->employee_id]) . '"class="text-white">Reactivate</a></span>';
-
+                        return '
+                        <select class="select-action form-control width" data-id="' . $id->employee_id . '">
+                        <option class="m-0" value="0" disabled="true" selected="true">---Select Action--- </option>
+                        <option value="edit_employee">EDIT</option>
+                            <option value="delete_employee">Delete</option>
+                            <option value="reactivate_employee">Reactivate</option>
+                        </select>';
                     }
-                    return $btn;
+
+                    // return '<span class="badge badge-sm bg-warning"><a href="' . route('admin.edit_employee', ['employee_id' => $id->employee_id]) . '" class="text-white">EDIT</a></span>';
+                })
+                ->addColumn('employee_info', function ($id) {
+                    return '<a href="' . route('admin.employee_info', ['employee_id' => $id->employee_id]) . '"><button class="btn">' . $id->employee_id . '</button></a>';
                 })
                 ->escapeColumns([])
-                ->rawColumns(['edit', 'delete', 'action'])
+                ->rawColumns(['action', 'employee_info'])
                 ->make(true);
         }
 
+        $employee_email = session()->get("admin");
+        $employee_id = employee::where("email", $employee_email)->first();
 
-        // dd($prod);
-        return view("admin.manage_employee");
+
+        return view("admin.manage_employee", compact('employee_id'));
     }
 
     public function fetch_data_for_edit_employee($employee_id)
     {
+        // $job_title = job::all();
         $job_title = job::where('status', 'active')->get();
 
         $employee_data = employee::where('employee_id', $employee_id)->first();
@@ -173,6 +203,37 @@ class AdminController extends Controller
 
     }
 
+    public function employee_info($employee_id)
+    {
+        $employee_data = employee::where('employee_id', $employee_id)->first();
+        // dd($employee_data);
+        return view('admin.employee_info', compact('employee_data'));
+
+    }
+
+    public function bulkdata_employee(Request $request)
+    {
+        $rules = [
+            'emp_excel' => 'required|mimes:xlsx',
+        ];
+        $error_msg = [
+            'emp_excel.required' => 'File choose compulsory',
+            'mimes.required' => 'field must be a file of type: xlsx.',
+
+        ];
+        $request->validate($rules, $error_msg);
+        // dd($request->file('emp_excel'));
+        $upload = Excel::import(new EmployeeImport, $request->file('emp_excel'));
+        // $upload = Excel::import(new UsersImport, $request->file('emp_excel'));
+        if ($upload) {
+            session()->flash('success', 'Excel file uploaded and processed successfully.');
+            return redirect()->route('admin.manage_employee');
+        } else {
+            session()->flash('error', 'Error in updating Data.');
+            return redirect()->route('admin.manage_employee');
+        }
+    }
+
     public function add_job_title()
     {
         return view("admin.add_job_title");
@@ -196,32 +257,48 @@ class AdminController extends Controller
 
         if ($request->ajax() || $request->isXmlHttpRequest() || $request->wantsJson()) {
             $data = job::all();
-
             return DataTables::of($data)
-                ->addColumn('edit', function ($id) {
-                    return '<span class="badge badge-sm bg-warning"><a href="' . route('admin.edit_job', ['id' => $id->id]) . '" class="text-white">EDIT</a></span>';
-                })
-                ->addColumn('delete', function ($id) {
-                    return '<span class="badge badge-sm bg-danger"><a href="' . route('admin.delete_job', ['id' => $id->id]) . '" class="text-white">DELETE</a></span>';
-                })
-                ->addColumn('action', function ($book) {
-                    $btn = '';
-                    if ($book->status == 'active') {
-                        $btn = '<span class="badge badge-sm bg-danger"><a href="' . route('admin.inactive_job', ['id' => $book->id]) . '"class="text-white">Deactivate</a></span>';
-                    } else if ($book->status == 'inactive') {
-                        $btn = $btn . '<span class="badge badge-sm bg-success"><a href="' . route('admin.active_job', ['id' => $book->id]) . '"class="text-white">Activate</a></span>';
-
+                ->addColumn('action', function ($id) {
+                    if ($id->status == "active") {
+                        return '
+            <select class="select-action form-control width" data-id="' . $id->id . '">
+            <option class="m-0" value="0" disabled="true" selected="true">---Select Action--- </option>
+            <option value="edit_job">EDIT</option>
+                <option value="delete_job">Delete</option>
+                <option value="deactivate_job">Deactivate</option>
+            </select>';
+                    } else if ($id->status == 'inactive') {
+                        return '
+                <select class="select-action form-control width" data-id="' . $id->id . '">
+                <option class="m-0" value="0" disabled="true" selected="true">---Select Action--- </option>
+                <option value="edit_job">EDIT</option>
+                    <option value="delete_job">Delete</option>
+                    <option value="active_job">Active</option>
+                </select>';
                     } else {
-                        $btn = $btn . '<span class="badge badge-sm bg-secondary"><a href="' . route('admin.active_job', ['id' => $book->id]) . '"class="text-white">Reactivate</a></span>';
-
+                        return '
+                <select class="select-action form-control width" data-id="' . $id->id . '">
+                <option class="m-0" value="0" disabled="true" selected="true">---Select Action--- </option>
+                <option value="edit_job">EDIT</option>
+                    <option value="delete_job">Delete</option>
+                    <option value="reactivate_job">Reactivate</option>
+                </select>';
                     }
-                    return $btn;
+
+                    // return '<span class="badge badge-sm bg-warning"><a href="' . route('admin.edit_employee', ['employee_id' => $id->employee_id]) . '" class="text-white">EDIT</a></span>';
                 })
                 ->escapeColumns([])
-                ->rawColumns(['edit', 'delete', 'action'])
+                ->rawColumns(['action'])
                 ->make(true);
         }
-        return view("admin.manage_job");
+
+
+        $employee_email = session()->get("admin");
+        $employee_id = employee::where("email", $employee_email)->first();
+
+
+        return view("admin.manage_job", compact('employee_id'));
+        // return view("admin.manage_job");
     }
 
     public function fetch_data_for_edit_job($id)
@@ -318,7 +395,12 @@ class AdminController extends Controller
                 // ->rawColumns(['edit', 'delete', 'action'])
                 ->make(true);
         }
-        return view("admin.manage_attendance");
+
+        $employee_email = session()->get("admin");
+        $employee_id = employee::where("email", $employee_email)->first();
+
+
+        return view("admin.manage_attendance", compact('employee_id'));
     }
 
 
@@ -392,30 +474,107 @@ class AdminController extends Controller
         }
     }
 
+    public function bulkdata_attendance(Request $request)
+    {
+        // $rules = [
+        //     'emp_excel' => 'required|mimes:xlsx',
+        // ];
+        // $error_msg = [
+        //     'emp_excel.required' => 'File choose compulsory',
+        //     'mimes.required' => 'field must be a file of type: xlsx.',
 
-    // public function add_attendance(Request $request)
-    // {
-    //     $emp_id = $request->emp_id;
-    //     $data = employee::where('employee_id', $emp_id)->first();
+        // ];
+        // // $request->validate($rules, $error_msg);
+        // request()->validate($rules, $error_msg);
 
-    //     $currentDate = Carbon::now()->toDateString();
-    //     $currentTime = Carbon::now()->toTimeString();
-    //     $count = attendance::where('employee_id', $emp_id)->first();
-    //     $count1 = attendance::where('employee_id')->first();
+        if (request()->has('emp_excel')) {
+            $data = file(request()->emp_excel);
 
-    //     if (!$count1->employee_id) {
+            //Chunking File
+            $chunks = array_chunk($data, 1000);
+            // convert 1000 records into a new csv file 
+            $path = resource_path("temp");
+            $header = [];
+            $batch = Bus::batch([])->dispatch();
+            foreach ($chunks as $key => $chunk) {
+                $data = array_map("str_getcsv", $chunk);
 
-    //         $attendance = new attendance();
-    //         $attendance->employee_id = $emp_id;
-    //         $attendance->employee_name = $data->name;
-    //         $attendance->current_date = $currentDate;
-    //         $attendance->current_in_time = $currentTime;
-    //         // $attendance->current_out_time = $currentTime;
-    //         $attendance->count = 1;
-    //         dd($attendance);
-    //     }
-    //     else{
-    //         dd('dk');
-    //     }
-    // }
+                if ($key == 0) {
+                    $header = $data[0];
+                    unset($data[0]);
+                }
+
+                $batch->add(new SalesCsvProcess($data, $header));
+
+            }
+
+
+
+
+            // dump($batch);
+            session()->flash('success', 'Stored Data');
+            return redirect()->route('admin.manage_attendance');
+        }
+        // return "please Upload file";
+        // if ($request->has('emp_excel')) {
+        //     $data = file($request->emp_excel);
+
+        //     // Chunking File
+        //     $chunks = array_chunk($data, 1000);
+        //     // Convert 1000 records into a new csv file
+        //     $header = [];
+        //     $batch = Bus::batch([])->dispatch();
+
+        //     foreach ($chunks as $key => $chunk) {
+        //         $dataChunk = array_map("str_getcsv", $chunk);
+
+        //         if ($key == 0) {
+        //             $header = $dataChunk[0];
+        //             unset($dataChunk[0]);
+        //         }
+
+        //         $batch->add(new SalesCsvProcess($dataChunk, $header));
+        //     }
+
+
+        //     session()->flash('success', 'Stored Data');
+        //     return redirect()->route('admin.manage_attendance');
+        // }
+
+        return "Please upload a file";
+
+
+
+
+        // * Old Code
+
+        // dd($request->file('emp_excel'));
+        // $upload = Excel::import(new AttendanceImport, $request->file('emp_excel'));
+        // // $upload = Excel::import(new UsersImport, $request->file('emp_excel'));
+        // if ($upload) {
+        //     session()->flash('success', 'Excel file uploaded and processed successfully.');
+        //     return redirect()->route('admin.manage_attendance');
+        // } else {
+        //     session()->flash('error', 'Error in updating Data.');
+        //     return redirect()->route('admin.manage_attendance');
+        // }
+    }
+
+    public function batch()
+    {
+        $batchId = request('id');
+        dump(Bus::findBatch($batchId));
+    }
+    public function export_attendance()
+    {
+        return Excel::download(new Attendance_Export, 'attendance.xlsx');
+    }
+
+    public function destroySession()
+    {
+        session()->forget('val');
+        session()->forget('insert');
+        session()->forget('check_out');
+        return redirect('/');
+    }
 }

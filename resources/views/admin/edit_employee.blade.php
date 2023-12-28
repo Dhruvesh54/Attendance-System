@@ -81,9 +81,9 @@
                                         <label for="yourPassword" class="form-label">Job Title</label>
                                         <select class="product_code form-select" aria-label="Default select example"
                                             name="job_title" id="job_title1">
-                                            <option class="m-0" value="0" disabled="true" selected="true">---Select Title--- </option>
+                                            <option class="m-0" value="{{ $employee_data->job_title }}" disabled="false" selected="true" >{{ $employee_data->job_title }}</option>
                                             @foreach ($job_title as $cat)
-                                            <option {{ $cat->job_title == $employee_data->job_title ? 'selected' : '' }} value="{{ $cat->job_title }}">
+                                            <option value="{{ $cat->job_title }}">
                                                 {{ $cat->job_title }}
                                             </option>
                                         @endforeach

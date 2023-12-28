@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title>Lgin</title>
+    <title>Login</title>
     <!-- Favicons -->
     <link href="{{ URL::to('/') }}/assets/img/logo.png" rel="icon">
     {{-- <link href="{{ URL::to('/') }}/assets/img/apple-touch-icon.png" rel="apple-touch-icon"> --}}

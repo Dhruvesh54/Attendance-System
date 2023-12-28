@@ -9,4 +9,11 @@ class attendance extends Model
 {
     use HasFactory;
     public $table = 'attendance';
+    protected $fillable = [
+        'employee_id',
+        'employee_name',
+        'current_date',
+        'current_in_time',
+        'current_out_time',
+    ];
 }

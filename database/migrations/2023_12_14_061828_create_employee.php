@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('employee', function (Blueprint $table) {
             $table->id();
             $table->string('employee_id');
-            $table->string('joining_date');
+            $table->date('joining_date');
             $table->string('name');
             $table->string('email')->unique();
             $table->bigInteger('mobile');
@@ -23,6 +23,8 @@ return new class extends Migration
             $table->string('password');
             $table->string('status')->default('inactive');
             $table->string('role')->default('employee');
+            $table->string('ip_address')->nullable(true);
+            $table->string('last_login_time')->nullable(true);
             $table->timestamps();
         });
     }

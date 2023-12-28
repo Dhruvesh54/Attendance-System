@@ -20,13 +20,22 @@ Route::get('/', function () {
     return view('index');
 });
 
+Route::post('saveImage', [LoginController::class, 'saveImage'])->name('saveImage');
+Route::get('saveimage', function () {
+    return view('saveimage');
+});
+
 Route::view('login', 'login');
 Route::post('login_authentication', [LoginController::class, 'Login_authentication'])->name('admin.login_authentication_method');
 Route::get('logout', [LoginController::class, 'logout'])->name('admin.logout');
-Route::post('add_attendance', [AdminController::class,'add_attendance'])->name('add_attendance');
+Route::post('add_attendance', [AdminController::class, 'add_attendance'])->name('add_attendance');
 Route::get('create_post', [LoginController::class, 'create_post'])->name('create_post');
 
+
+
+
 Route::prefix('admin')->group(function () {
+    Route::get('destroySession', [AdminController::class, 'destroySession'])->name('admin.destroySession');
     Route::middleware(['admin_authentication'])->group(function () {
         Route::get('index', [AdminController::class, 'index'])->name('admin.index');
         Route::get('add_employee', [AdminController::class, 'add_employee'])->name('admin.add_employee');
@@ -37,6 +46,16 @@ Route::prefix('admin')->group(function () {
 
         Route::post('add_employee_method', [AdminController::class, 'add_employee_method'])->name('admin.add_employee_method');
         Route::post('add_job_method', [AdminController::class, 'add_job_method'])->name('admin.add_job_method');
+        // *Bulk Data
+        Route::post('bulkdata_employee', [AdminController::class, 'bulkdata_employee'])->name('admin.bulkdata_employee');
+        Route::post('bulkdata_attendance', [AdminController::class, 'bulkdata_attendance'])->name('admin.bulkdata_attendance');
+
+
+        //* data upload in job
+        Route::get('batch', [AdminController::class, 'batch'])->name('admin.batch');
+
+        Route::get('employee_info/{employee_id}', [AdminController::class, 'employee_info'])->name('admin.employee_info');
+        Route::get('export_attendance', [AdminController::class, 'export_attendance'])->name('admin.export_attendance');
 
         // *CRUDE Employee
         Route::get('edit_employee/{employee_id}', [AdminController::class, 'fetch_data_for_edit_employee'])->name('admin.edit_employee');

@@ -2,13 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Imports\UsersImport;
 use App\Models\employee;
 use App\Models\jession;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Http\Request;
+use App\Tratis\saveFile;
+use Maatwebsite\Excel\Facades\Excel;
 
 class LoginController extends Controller
 {
+    use saveFile;
     public function Login_authentication(Request $request)
     {
         $rules = [
@@ -46,13 +51,33 @@ class LoginController extends Controller
         }
     }
 
-    public function logout()
+    public function logout(Request $request)
     {
+        $employee_email = session()->get("admin");
+        $employee_id = employee::where("email", $employee_email)->first()->employee_id;
+
+
+        $data = employee::where('employee_id', $employee_id)->first();
+        $data->where('employee_id', $employee_id)->update(
+            array(
+                'ip_address' => $request->ip(),
+                'last_login_time' => Carbon::now('Asia/Kolkata')->format('Y-m-d h:i:s A'),
+            )
+        );
+
         session()->forget('admin');
         session()->flash('success', 'Your account was logged out successfully');
         return redirect('login');
-    }
 
+
+        // $data->where('employee_id', $employee_id)->update(
+        //     array(
+        //         'ip_address' => $request->ip(),
+        //         // 'last_accessed' => Carbon::now('Asia/Kolkata')->toDateTimeString(),
+        //         'last_accessed' => Carbon::now('Asia/Kolkata')->format('Y-m-d h:i:s A'),
+        //     )
+        // );
+    }
 
     public function create_post()
     {
@@ -69,5 +94,20 @@ class LoginController extends Controller
         // foreach ($posts->data as $key => $value) {
         //     dump($key, $value);
         // }
+    }
+
+    public function saveImage(Request $request)
+    {
+
+        $data = Excel::import(new UsersImport,$request->file('image'));
+
+        if($data){
+            return "Done";
+        }
+        else{
+            return "Error";
+        }
+
+
     }
 }

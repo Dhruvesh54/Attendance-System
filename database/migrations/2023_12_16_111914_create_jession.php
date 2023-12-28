@@ -13,8 +13,8 @@ return new class extends Migration
     {
         Schema::create('jession', function (Blueprint $table) {
             $table->id();
-            $table->string('title');
-            $table->json('data');
+            $table->binary('title');
+            $table->binary('data');
             $table->timestamps();
         });
     }
